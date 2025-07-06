@@ -1,5 +1,5 @@
 function getSheet() {
-  const spreadsheetId = 'YOUR_SPREADSHEET_ID';
+  const spreadsheetId = 'YOUR_SPREADSHEET_ID1';
   const ss = SpreadsheetApp.openById(spreadsheetId);
   const sheet = ss.getSheetByName('Diary') || ss.insertSheet('Diary');
   
