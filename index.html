@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* Your existing styles */
+    .calendar-table th, .calendar-table td {
+      width: 14.28%;
+      height: 50px;
+      border: 1px solid #e5e7eb;
+      text-align: center;
+      vertical-align: middle;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    .calendar-table th {
+      font-size: 0.75rem;
+    }
+    .today { background-color: #fee2e2; }
+    .has-entry { background-color: #d1fae5; }
+    #calendarWindow {
+      position: relative;
+      background: white;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 0.5rem;
+      max-width: 100%;
+    }
+    #notification {
+      transition: opacity 0.3s ease;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans p-4 sm:p-6">
+  <div class="max-w-3xl mx-auto">
+    <h2 class="text-2xl font-bold text-zinc-800 mb-4">📖 Personal Diary</h2>
+    
+    <div class="mb-4 flex flex-col sm:flex-row gap-2">
+      <input id="searchInput" type="text" placeholder="🔍 Search entries..." 
+             class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+             oninput="searchEntries()">
+      <button onclick="toggleAllEntries()" class="bg-indigo-500 text-white px-3 py-2 rounded-lg hover:bg-indigo-600 text-sm">📜 Show all entries</button>
+    </div>
+    <div id="searchResults" class="mt-2 max-h-64 overflow-y-auto hidden"></div>
+
+    <div id="calendarNav" class="flex justify-between items-center mb-2">
+      <button onclick="changeMonth(-1)" class="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600">←</button>
+      <span id="monthYear" class="text-base font-semibold text-gray-700"></span>
+      <button onclick="changeMonth(1)" class="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600">→</button>
+    </div>
+
+    <div id="calendarWindow">
+      <div id="calendar"></div>
+    </div>
+
+    <div id="entryBox" class="mt-4 bg-white rounded-lg shadow-md p-4 hidden">
+      <h3 id="entryDate" class="text-lg font-semibold text-emerald-500 mb-3"></h3>
+      <p id="entryTimestamp" class="text-sm text-sky-500 mb-2"></p>
+      <textarea id="entryText" class="w-full p-2 border border-sky-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                style="min-height:120px;"></textarea>
+      <div class="mt-3 flex gap-2">
+        <button onclick="saveEntry()" class="bg-green-500 text-white px-3 py-1 rounded-lg">💾 Save</button>
+        <button onclick="clearEntry()" class="bg-red-500 text-white px-3 py-1 rounded-lg">🗑 Delete</button>
+      </div>
+    </div>
+
+    <div id="notification" class="mt-3 p-3 rounded-lg hidden"></div>
+  </div>
+
+  <script>
+    const WEB_APP_URL = "YOUR_WEB_APP_URL"; // Replace with your deployed runner.gs URL
+    
+    let entries = {};
+    let currentYear, currentMonth;
+
+    async function callAppScript(functionName, params = {}) {
+      try {
+        const response = await fetch(WEB_APP_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            function: functionName,
+            params: params
+          })
+        });
+        return await response.json();
+      } catch (error) {
+        showNotification('Error: ' + error.message, 'bg-red-500 text-white');
+        throw error;
+      }
+    }
+
+    async function init() {
+      entries = await callAppScript('getAllEntries');
+      const now = new Date();
+      currentYear = now.getFullYear();
+      currentMonth = now.getMonth();
+      loadCalendar(currentYear, currentMonth);
+    }
+
+    function loadCalendar(year, month) {
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                         'July', 'August', 'September', 'October', 'November', 'December'];
+      document.getElementById('monthYear').innerText = `${monthNames[month]} ${year}`;
+      
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const todayStr = new Date().toISOString().split('T')[0];
+      
+      let html = '<table class="calendar-table w-full"><tr>';
+      ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => 
+        html += `<th class="text-gray-600">${day}</th>`);
+      html += '</tr><tr>';
+
+      for (let i = 0; i < firstDay; i++) html += '<td></td>';
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${(month+1).toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}`;
+        const isToday = dateStr === todayStr;
+        const hasEntry = entries[dateStr]?.content?.trim();
+        html += `<td class="${isToday ? 'today' : ''} ${hasEntry ? 'has-entry' : ''}" 
+                 onclick="showEntry('${dateStr}')">${d}</td>`;
+        if ((firstDay + d) % 7 === 0) html += '</tr><tr>';
+      }
+
+      document.getElementById('calendar').innerHTML = html + '</tr></table>';
+    }
+
+    function showEntry(dateStr) {
+      document.getElementById('entryDate').innerText = `Entry for ${dateStr}`;
+      document.getElementById('entryText').value = entries[dateStr]?.content || '';
+      document.getElementById('entryTimestamp').innerText = 
+        entries[dateStr]?.timestamp ? `Last edited: ${entries[dateStr].timestamp}` : '';
+      document.getElementById('entryBox').classList.remove('hidden');
+      document.getElementById('entryBox').dataset.date = dateStr;
+    }
+
+    async function saveEntry() {
+      const dateStr = document.getElementById('entryBox').dataset.date;
+      const text = document.getElementById('entryText').value;
+      
+      try {
+        const result = await callAppScript('saveDiaryEntry', {date: dateStr, entry: text});
+        showNotification('Entry saved successfully!', 'bg-green-500 text-white');
+        entries[dateStr] = { content: text, timestamp: result.timestamp };
+        loadCalendar(currentYear, currentMonth);
+      } catch (error) {
+        showNotification('Error saving entry: ' + error.message, 'bg-red-500 text-white');
+      }
+    }
+
+    async function clearEntry() {
+      const dateStr = document.getElementById('entryBox').dataset.date;
+      try {
+        await callAppScript('deleteDiaryEntry', {date: dateStr});
+        showNotification('Entry deleted', 'bg-green-500 text-white');
+        delete entries[dateStr];
+        document.getElementById('entryBox').classList.add('hidden');
+        loadCalendar(currentYear, currentMonth);
+      } catch (error) {
+        showNotification('Error deleting entry: ' + error.message, 'bg-red-500 text-white');
+      }
+    }
+
+    async function searchEntries() {
+      const keyword = document.getElementById('searchInput').value.trim();
+      if (!keyword) return;
+      
+      try {
+        const results = await callAppScript('searchEntries', {keyword});
+        const resultsDiv = document.getElementById('searchResults');
+        resultsDiv.innerHTML = results.length 
+          ? `<ul class="bg-white rounded-lg shadow-md p-3">${results.map(r => 
+              `<li class="p-2 hover:bg-gray-100 cursor-pointer" onclick="showEntry('${r.date}')">
+                <b>${r.date}</b>: ${r.content.substring(0, 50)}...
+               </li>`).join('')}</ul>`
+          : '<p class="text-red-500">No entries found</p>';
+        resultsDiv.classList.remove('hidden');
+      } catch (error) {
+        showNotification('Search error: ' + error.message, 'bg-red-500 text-white');
+      }
+    }
+
+    function showNotification(message, classes) {
+      const el = document.getElementById('notification');
+      el.textContent = message;
+      el.className = classes + ' p-3 rounded-lg';
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
